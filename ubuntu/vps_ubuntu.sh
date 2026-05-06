@@ -73,16 +73,5 @@ alias eee=\"echo -e '\\e[8;60;190;t'\"\n" >> ~/.bashrc
 # echo 'docker compose up --build -d' >> ~/.bash_history
 # history -s docker\\ ps
 
-# Установка 3proxy
-# https://github.com/3proxy
-
-# # Установка Nginx и сертификата Let's Encrypt
-# sudo apt install -y nginx certbot python3-certbot-nginx
-# sudo systemctl restart nginx
-# sudo ufw allow 'Nginx Full'
-
-# # Запуск сертификации через Certbot
-# sudo certbot --nginx -d serpan.site
-
 # Сообщение о завершении процесса
 echo "Установка завершена! Перезагрузитесь, чтобы применить изменения."

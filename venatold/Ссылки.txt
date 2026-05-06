@@ -1,0 +1,12 @@
+Полезные инструменты OSINT
+• Holehe OSINT – поиск аккаунтов по e-mail
+• Maigret (Мегрэ) – форк Sherlock - https://github.com/soxoj/maigret
+• Telegago – поисковик по Телеграм -
+https://cse.google.com/cse?cx=006368593537057042503:efxu7xprihg#gsc.tab=0
+• _Intelligence X – поиск по всему подряд (+ТОР) - https://intelx.io/
+• @Telesint_bot – поиск пользователей в группах Телеграм
+• @TgAnalyst_bot – деанонимизация в Телеграм. Канал t.me/russian_deanon
+• Teleparser – парсер в Телеграм - https://webhor.com/s/teleparser
+• Tgparser – парсер в Телеграм - https://github.com/white-hackers/tgparser
+• Canary Tokens – адресные ловушки
+• Яндекс Картинки и Google Images
