@@ -1,5 +1,5 @@
 #!/bin/bash
-# wget https://raw.githubusercontent.com/SergeyMi37/telebot-plugins/master/doc/vps_ubuntu_sec.sh && chmod +x vps_ubuntu_sec.sh && ./vps_ubuntu_sec.sh
+# wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu_sec.sh && chmod +x vps_ubuntu_sec.sh && ./vps_ubuntu_sec.sh
 et -e  # Прерывать выполнение при ошибке
 
 # Цвета для вывода

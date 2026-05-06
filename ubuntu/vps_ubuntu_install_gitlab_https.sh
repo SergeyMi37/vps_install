@@ -1,5 +1,5 @@
 #!/bin/bash
-# wget https://raw.githubusercontent.com/SergeyMi37/telebot-plugins/master/doc/vps_ubuntu_install_gitlab_https.sh && chmod +x vps_ubuntu_install_gitlab_https.sh && ./vps_ubuntu_install_gitlab_https.sh
+# wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu_install_gitlab_https.sh && chmod +x vps_ubuntu_install_gitlab_https.sh && ./vps_ubuntu_install_gitlab_https.sh
 
 # Установка GitLab CE на Ubuntu 22.04/24.04 с настройкой SSL
 # https://chat.deepseek.com/share/ka6rvxex6zoffhtyxl
