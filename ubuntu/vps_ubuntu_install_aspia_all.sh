@@ -1,16 +1,7 @@
 #!/bin/bash
-# wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu_install_aspia_all.sh && sudo chmod +x vps_ubuntu_install_aspia_all.sh && sudo ./vps_ubuntu_install_aspia_all.sh
-
-# Скрипт для установки Aspia Router / Relay на Debian/Ubuntu
 # =============================================================================
 # Автоматическая установка Aspia Router/Relay с поддержкой субдомена
-# Версия: 1.0
-# =============================================================================
-# Использование:
-#   Установка Router:        ./aspia_auto.sh router --domain router.example.com
-#   Установка Relay:         ./aspia_auto.sh relay --router-ip 1.2.3.4 --router-pub "КЛЮЧ" --domain relay.example.com
-#   Установка Both (всё в 1): ./aspia_auto.sh both --domain my.aspia.com
-#   Только Router без домена: ./aspia_auto.sh router
+# wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu_install_aspia_all.sh && sudo chmod +x vps_ubuntu_install_aspia_all.sh && sudo ./vps_ubuntu_install_aspia_all.sh
 # =============================================================================
 
 set -e
@@ -144,9 +135,6 @@ setup_router() {
     echo -e "${YELLOW}📋 Публичный ключ Router (сохраните для Relay):${NC}"
     echo -e "${BLUE}${PUB_KEY}${NC}"
     echo ""
-    
-    # Возвращаем путь к ключу для использования в both режиме
-    echo "/etc/aspia/router.pub"
 }
 
 # --- Функция настройки Relay ---
@@ -182,22 +170,6 @@ EOF
     
     print_info "✓ Aspia Relay установлен и запущен"
     print_info "Relay адрес: ${PEER_DOMAIN}:${RELAY_PORT}"
-}
-
-# --- Функция изменения пароля admin ---
-change_admin_password() {
-    print_step "Смена пароля admin (по умолчанию admin:admin)"
-    
-    # Проверяем, существует ли aspia_router
-    if command -v aspia_router &> /dev/null; then
-        read -s -p "Введите новый пароль для admin: " NEW_PASS
-        echo ""
-        if [[ -n "$NEW_PASS" ]]; then
-            # Aspia не имеет прямого CLI для смены пароля, но можно через создание нового конфига
-            print_warn "Для смены пароля используйте Aspia Console после установки"
-            print_warn "Инструкция: https://habr.com/ru/articles/711122/"
-        fi
-    fi
 }
 
 # --- Парсинг аргументов ---
@@ -315,7 +287,7 @@ setup_firewall
 # Выполнение в зависимости от режима
 case "$MODE" in
     router)
-        setup_router "$DOMAIN" > /dev/null
+        setup_router "$DOMAIN"
         if [[ -n "$DOMAIN" ]]; then
             setup_domain "$DOMAIN" "${EMAIL}"
         fi
@@ -330,8 +302,10 @@ case "$MODE" in
         print_step "Установка Router + Relay на одном сервере"
         
         # Устанавливаем Router
-        setup_router "$DOMAIN" > /tmp/router_pub_path.txt
-        local PUB_KEY=$(cat /etc/aspia/router.pub)
+        setup_router "$DOMAIN"
+        
+        # Получаем публичный ключ (без local, так как мы вне функции)
+        PUB_KEY=$(cat /etc/aspia/router.pub)
         
         # Настраиваем Router для работы с Relay (добавляем localhost в белый список)
         sed -i 's/"relayWhiteList": \[\]/"relayWhiteList": ["127.0.0.1"]/' /etc/aspia/router.json
