@@ -17,6 +17,7 @@ print_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 print_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 print_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
+print_debug() { echo -e "${BLUE}[DEBUG]${NC} $1"; }
 
 # --- Проверка root ---
 if [[ $EUID -ne 0 ]]; then
@@ -58,11 +59,37 @@ setup_firewall() {
     
     print_step "Настройка фаервола..."
     ufw allow 22/tcp comment 'SSH' > /dev/null 2>&1
+    ufw allow 80/tcp comment 'HTTP' > /dev/null 2>&1
+    ufw allow 443/tcp comment 'HTTPS' > /dev/null 2>&1
     ufw allow 8070/tcp comment 'Aspia Router' > /dev/null 2>&1
     ufw allow 8080/tcp comment 'Aspia Relay' > /dev/null 2>&1
     
     echo "y" | ufw enable > /dev/null 2>&1
-    print_info "Порты открыты: 22, 8070, 8080"
+    print_info "Порты открыты: 22, 80, 443, 8070, 8080"
+}
+
+# --- Функция проверки DNS ---
+check_dns() {
+    local DOMAIN=$1
+    print_step "Проверка DNS для ${DOMAIN}..."
+    
+    local SERVER_IP=$(curl -s ifconfig.me)
+    local DOMAIN_IP=$(dig +short ${DOMAIN} | head -1)
+    
+    if [[ -z "$DOMAIN_IP" ]]; then
+        print_error "Домен ${DOMAIN} не резолвится в DNS!"
+        print_warn "Добавьте A-запись: ${DOMAIN} -> ${SERVER_IP}"
+        return 1
+    fi
+    
+    if [[ "$DOMAIN_IP" != "$SERVER_IP" ]]; then
+        print_error "Домен ${DOMAIN} указывает на ${DOMAIN_IP}, но сервер имеет IP ${SERVER_IP}"
+        print_warn "Исправьте DNS запись или используйте --ip параметр"
+        return 1
+    fi
+    
+    print_info "✓ DNS проверена: ${DOMAIN} -> ${DOMAIN_IP}"
+    return 0
 }
 
 # --- Функция настройки субдомена с SSL (Nginx + Certbot) ---
@@ -72,15 +99,30 @@ setup_domain() {
     
     print_step "Настройка субдомена: ${DOMAIN}"
     
+    # Проверка DNS перед продолжением
+    if ! check_dns "$DOMAIN"; then
+        print_error "SSL сертификат не может быть выдан из-за проблем с DNS"
+        print_info "Продолжаем установку без SSL (только HTTP)..."
+        return 1
+    fi
+    
     # Установка Nginx и Certbot
     apt update > /dev/null 2>&1
-    apt install -y nginx certbot python3-certbot-nginx > /dev/null 2>&1
+    apt install -y nginx certbot python3-certbot-nginx curl dnsutils > /dev/null 2>&1
     
-    # Создание конфига Nginx
+    # Останавливаем nginx если он мешает
+    systemctl stop nginx 2>/dev/null || true
+    
+    # Создание конфига Nginx для HTTP (временный)
     cat > /etc/nginx/sites-available/aspia <<EOF
 server {
     listen 80;
     server_name ${DOMAIN};
+    root /var/www/html;
+    
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
     
     location / {
         proxy_pass http://127.0.0.1:8070;
@@ -98,14 +140,70 @@ EOF
     # Активация сайта
     ln -sf /etc/nginx/sites-available/aspia /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
-    nginx -t > /dev/null 2>&1
-    systemctl reload nginx
     
-    # Получение SSL сертификата
+    # Проверка и запуск Nginx
+    nginx -t
+    systemctl start nginx
+    systemctl enable nginx
+    
+    # Создание временной директории для проверки
+    mkdir -p /var/www/html/.well-known/acme-challenge/
+    chown -R www-data:www-data /var/www/html/
+    
+    # Получение SSL сертификата с отладкой
     print_info "Получение SSL сертификата для ${DOMAIN}..."
-    certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos --email "${EMAIL}" --redirect > /dev/null 2>&1
+    
+    # Пробуем получить сертификат в тестовом режиме
+    if certbot certonly --webroot -w /var/www/html \
+        -d "${DOMAIN}" \
+        --email "${EMAIL}" \
+        --agree-tos \
+        --no-eff-email \
+        --staging \
+        --debug-challenges \
+        --non-interactive; then
+        
+        print_info "Тестовый сертификат получен, получаем реальный..."
+        
+        # Получаем реальный сертификат
+        certbot --nginx -d "${DOMAIN}" \
+            --email "${EMAIL}" \
+            --agree-tos \
+            --no-eff-email \
+            --redirect \
+            --non-interactive
+        
+    else
+        print_warn "Тестовый режим не удался, пробуем реальный..."
+        
+        # Пробуем получить реальный сертификат
+        if certbot --nginx -d "${DOMAIN}" \
+            --email "${EMAIL}" \
+            --agree-tos \
+            --no-eff-email \
+            --redirect \
+            --non-interactive \
+            --force-renewal; then
+            
+            print_info "SSL сертификат успешно получен"
+        else
+            print_error "Не удалось получить SSL сертификат"
+            print_warn "Проверьте:"
+            echo "  1. DNS запись ${DOMAIN} указывает на этот сервер"
+            echo "  2. Порт 80 открыт в firewall"
+            echo "  3. Nginx запущен и слушает порт 80"
+            echo ""
+            print_info "Продолжаем работу без HTTPS (только HTTP)"
+            
+            # Убираем редирект на HTTPS
+            sed -i 's/return 301 https/#return 301 https/' /etc/nginx/sites-available/aspia
+            systemctl reload nginx
+            return 1
+        fi
+    fi
     
     print_info "Субдомен ${DOMAIN} настроен с SSL"
+    return 0
 }
 
 # --- Функция настройки Router ---
@@ -128,10 +226,18 @@ setup_router() {
     systemctl enable aspia-router > /dev/null 2>&1
     systemctl start aspia-router
     
-    # Сохраняем публичный ключ для вывода
-    local PUB_KEY=$(cat /etc/aspia/router.pub 2>/dev/null || echo "Файл ключа не найден")
+    # Проверка статуса
+    sleep 2
+    if systemctl is-active --quiet aspia-router; then
+        print_info "✓ Aspia Router запущен"
+    else
+        print_warn "Aspia Router не запустился, проверьте: journalctl -u aspia-router"
+    fi
     
-    print_info "✓ Aspia Router установлен и запущен"
+    # Сохраняем публичный ключ
+    PUB_KEY=$(cat /etc/aspia/router.pub 2>/dev/null || echo "Файл ключа не найден")
+    
+    print_info "✓ Aspia Router установлен"
     echo -e "${YELLOW}📋 Публичный ключ Router (сохраните для Relay):${NC}"
     echo -e "${BLUE}${PUB_KEY}${NC}"
     echo ""
@@ -168,7 +274,15 @@ EOF
     systemctl enable aspia-relay > /dev/null 2>&1
     systemctl start aspia-relay
     
-    print_info "✓ Aspia Relay установлен и запущен"
+    # Проверка статуса
+    sleep 2
+    if systemctl is-active --quiet aspia-relay; then
+        print_info "✓ Aspia Relay запущен"
+    else
+        print_warn "Aspia Relay не запустился, проверьте: journalctl -u aspia-relay"
+    fi
+    
+    print_info "✓ Aspia Relay установлен"
     print_info "Relay адрес: ${PEER_DOMAIN}:${RELAY_PORT}"
 }
 
@@ -211,6 +325,10 @@ while [[ $# -gt 0 ]]; do
             EMAIL="$2"
             shift 2
             ;;
+        --skip-ssl)
+            SKIP_SSL=1
+            shift
+            ;;
         --help|-h)
             echo "Использование: $0 [режим] [опции]"
             echo ""
@@ -226,11 +344,12 @@ while [[ $# -gt 0 ]]; do
             echo "  --router-pub KEY          - публичный ключ Router (обязательно для relay)"
             echo "  --relay-port PORT         - порт Relay (по умолчанию: 8080)"
             echo "  --email, -e EMAIL         - email для SSL сертификата"
+            echo "  --skip-ssl                - пропустить настройку SSL"
             echo ""
             echo "Примеры:"
             echo "  $0 router --domain router.example.com"
             echo "  $0 relay --domain relay.example.com --router-ip 10.0.0.1 --router-pub \"AAAAB3Nza...\""
-            echo "  $0 both --domain my.aspia.com --email admin@my.aspia.com"
+            echo "  $0 both --domain my.aspia.com --email admin@my.aspia.com --skip-ssl"
             exit 0
             ;;
         *)
@@ -288,8 +407,8 @@ setup_firewall
 case "$MODE" in
     router)
         setup_router "$DOMAIN"
-        if [[ -n "$DOMAIN" ]]; then
-            setup_domain "$DOMAIN" "${EMAIL}"
+        if [[ -n "$DOMAIN" ]] && [[ -z "$SKIP_SSL" ]]; then
+            setup_domain "$DOMAIN" "${EMAIL}" || true
         fi
         ;;
     
@@ -304,18 +423,25 @@ case "$MODE" in
         # Устанавливаем Router
         setup_router "$DOMAIN"
         
-        # Получаем публичный ключ (без local, так как мы вне функции)
+        # Получаем публичный ключ
         PUB_KEY=$(cat /etc/aspia/router.pub)
         
-        # Настраиваем Router для работы с Relay (добавляем localhost в белый список)
-        sed -i 's/"relayWhiteList": \[\]/"relayWhiteList": ["127.0.0.1"]/' /etc/aspia/router.json
+        # Настраиваем Router для работы с Relay
+        if grep -q "relayWhiteList" /etc/aspia/router.json; then
+            sed -i 's/"relayWhiteList": \[\]/"relayWhiteList": ["127.0.0.1"]/' /etc/aspia/router.json
+        else
+            sed -i '/{/a "relayWhiteList": ["127.0.0.1"],' /etc/aspia/router.json
+        fi
+        
         systemctl restart aspia-router > /dev/null 2>&1
         
         # Устанавливаем Relay
         setup_relay "127.0.0.1" "$PUB_KEY" "$DOMAIN" "8070" "8080"
         
-        # Настраиваем домен с SSL
-        setup_domain "$DOMAIN" "${EMAIL}"
+        # Настраиваем домен с SSL (если не пропущено)
+        if [[ -z "$SKIP_SSL" ]]; then
+            setup_domain "$DOMAIN" "${EMAIL}" || true
+        fi
         
         print_info "✓ Router и Relay успешно настроены на одном сервере"
         ;;
@@ -333,8 +459,10 @@ case "$MODE" in
         echo "🌐 Aspia Router:"
         echo "   - Порт: 8070"
         echo "   - Логин/пароль по умолчанию: admin / admin"
-        if [[ -n "$DOMAIN" ]]; then
-            echo "   - Веб-интерфейс (если доступен): https://${DOMAIN}"
+        if [[ -n "$DOMAIN" ]] && [[ -z "$SKIP_SSL" ]]; then
+            echo "   - Веб-интерфейс: https://${DOMAIN}"
+        elif [[ -n "$DOMAIN" ]]; then
+            echo "   - Веб-интерфейс: http://${DOMAIN}"
         fi
         echo "   - Публичный ключ: /etc/aspia/router.pub"
         ;;
@@ -350,7 +478,11 @@ case "$MODE" in
         echo "   - Relay порт: 8080"
         echo "   - Адрес клиентов: ${DOMAIN}:8080"
         echo "   - Публичный ключ Router: /etc/aspia/router.pub"
-        echo "   - Веб-интерфейс Router: https://${DOMAIN}"
+        if [[ -z "$SKIP_SSL" ]]; then
+            echo "   - Веб-интерфейс Router: https://${DOMAIN}"
+        else
+            echo "   - Веб-интерфейс Router: http://${DOMAIN}"
+        fi
         ;;
 esac
 
