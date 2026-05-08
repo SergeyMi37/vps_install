@@ -88,7 +88,7 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-clear
+
 echo "========================================="
 echo "  RustDesk Server Installation"
 echo "========================================="
@@ -322,7 +322,7 @@ chmod +x /usr/local/bin/rustdesk-key
 # ============================================
 # Final output
 # ============================================
-clear
+
 echo "========================================="
 echo "  ✅ RustDesk Server Installed"
 echo "========================================="
@@ -335,6 +335,17 @@ echo "Info page:  https://$DOMAIN"
 echo ""
 echo "Commands:   rustdesk-status"
 echo "            rustdesk-key"
+
+echo "# Посмотреть логи hbbs (сервер регистрации)"
 echo "            docker logs -f rustdesk_hbbs"
+
+echo "# Посмотреть логи hbbr (релейный сервер)"
+echo "            docker logs -f rustdesk_hbbr"
+echo "# Перезапустить RustDesk сервер "
+echo "cd /opt/rustdesk && docker compose restart"
+echo ""
+echo "Клиентов можно скачать здесь"
+echo "https://github.com/rustdesk/rustdesk/releases"
+echo "https://rustdesk.com/web/"
 echo ""
 print_info "Installation complete!"
