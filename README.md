@@ -34,21 +34,8 @@ cd vps_install/ubuntu
 ./vps_ubuntu_lwolf.sh
  ```
 
-# Установка серверов ID для CrossDesk, RustDesk и Aspia
-## Только CrossDesk
-sudo ./vps_ubuntu_install_both.sh --cross-only -d cross.example.com -e admin@example.com
-
-## Только RustDesk
-sudo ./vps_ubuntu_install_both.sh --rust-only -r rust.example.com -e admin@example.com
-
-## Оба сервера без SSL (только HTTP)
-sudo ./vps_ubuntu_install_both.sh -d cross.example.com -r rust.example.com -e admin@example.com --no-ssl
-
-## Без доменов (только по IP)
-sudo ./vps_ubuntu_install_both.sh
-
-## С кастомным SSH портом
-sudo ./vps_ubuntu_install_both.sh -d cross.example.com -r rust.example.com -e admin@example.com -s 2222
+# Установка серверов ID для RustDesk c кастомным SSH портом
+sudo ./vps_ubuntu_install_rustdesk.sh -d rustdesk.example.com -e admin@example.com -s 2222
  
 ## Установка серверов Aspia
 sudo chmod +x vps_ubuntu_install_aspia.sh && sudo ./vps_ubuntu_install_aspia.sh
