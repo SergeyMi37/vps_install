@@ -634,7 +634,9 @@ echo ""
 print_info "--- ШАГ 6: ФИНАЛЬНАЯ ПРОВЕРКА ---"
 
 # Получаем IP сервера
-SERVER_IP=$(ip -4 route get 1 | awk '{print $NF;exit}' 2>/dev/null || hostname -I | awk '{print $1}')
+# SERVER_IP=$(curl -s ifconfig.me)
+# SERVER_IP=$(hostname -I | awk '{print $1}')
+SERVER_IP=$(ip -4 route get 1 | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
 
 echo ""
 print_success "✅ НАСТРОЙКА ЗАВЕРШЕНА!"

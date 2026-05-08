@@ -6,6 +6,7 @@ sudo apt update
 sudo apt install -y tigervnc-standalone-server tigervnc-common xfce4 xfce4-goodies
 
 # Настройка пароля
+echo "Введите пароль для входа в VNC "
 vncpasswd
 
 # Создание конфигурации
@@ -23,5 +24,8 @@ chmod +x ~/.vnc/xstartup
 vncserver -kill :1 2>/dev/null
 vncserver :1 -geometry 1366x768 -depth 24 -localhost
 
+SERVER_IP=$(ip -4 route get 1 | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+CURRENT_USER=$(whoami)
+
 echo "VNC установлен! Порт: 5901"
-echo "Подключение: ssh -L 5901:localhost:5901 -N пользователь@IP_сервера"
+echo "Подключение: ssh -L 5901:localhost:5901 -N ${CURRENT_USER}@${SERVER_IP}"

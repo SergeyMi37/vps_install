@@ -14,38 +14,28 @@ git clone https://github.com/SergeyMi37/vps_install && cd vps_install/ubuntu && 
 
 # Сначало надо установить основные приложения
 ```
-wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu.sh && chmod +x vps_ubuntu.sh && ./vps_ubuntu.sh
-```
-или
-```
-wget -qO /tmp/vps_setup.sh https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu.sh && chmod +x /tmp/vps_setup.sh && sudo bash /tmp/vps_setup.sh && rm /tmp/vps_setup.sh
+./vps_ubuntu.sh
 ```
 
-# Cоздать судо пользователя и добавить его в группу docker
-```
-./vps_ubuntu_newuser.sh -u msw -p 12345
-```
-
-# Создает sudo-пользователя, меняет порт SSH,  запрещает root-доступ и включает вход только по ключам
+# Создает sudo-пользователя, меняет порт SSH, запрещает root-доступ и включает вход только по ключам. Нужно будет ввести пароль для msw2, YES, бубличный ключ и YES
 ```
 su - msw
-sudo ./vps_ubuntu_newssh.sh --user msw2
+cd vps_install/ubuntu
+./vps_ubuntu_newssh.sh --user msw2 
 ```
 
 # Минимальная установка VNC и вводим для него пароль, который используем при подключении
 ```
-sudo chmod +x vps_ubuntu_vnc.sh && ./vps_ubuntu_vnc.sh
+./vps_ubuntu_vnc.sh
 ```
 
  # Скрипт установки LibreWolf на Ubuntu 22.04 Автоматически определяет лучший способ установки
  ```
-sudo chmod +x vps_ubuntu_lwolf.sh && ./vps_ubuntu_lwolf.sh
+./vps_ubuntu_lwolf.sh
  ```
 
- # Установка серверов ID для CrossDesk, RustDesk и Aspia
-sudo chmod +x vps_ubuntu_install_both
-
- ## Только CrossDesk
+# Установка серверов ID для CrossDesk, RustDesk и Aspia
+## Только CrossDesk
 sudo ./vps_ubuntu_install_both.sh --cross-only -d cross.example.com -e admin@example.com
 
 ## Только RustDesk
