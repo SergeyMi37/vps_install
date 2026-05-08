@@ -1,6 +1,17 @@
 # vps_install
 Скрипты по установки приложений на новые сервера
 
+# Cоздать судо пользователя
+```
+wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu_newuser.sh && sudo chmod +x vps_ubuntu_newuser.sh && ./vps_ubuntu_newuser.sh -u msw -p P@S5w0rd
+
+su - msw
+```
+# Клонируем и зайдем в репу
+```
+git clone https://github.com/SergeyMi37/vps_install && cd vps_install/ubuntu && sudo chmod +x *.sh
+```
+
 # Сначало надо установить основные приложения
 ```
 wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu.sh && chmod +x vps_ubuntu.sh && ./vps_ubuntu.sh
@@ -9,20 +20,16 @@ wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_
 ```
 wget -qO /tmp/vps_setup.sh https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu.sh && chmod +x /tmp/vps_setup.sh && sudo bash /tmp/vps_setup.sh && rm /tmp/vps_setup.sh
 ```
-# Клонируем и зайдем в репу
-```
-git clone https://github.com/SergeyMi37/vps_install
-cd vps_install/ubuntu
-```
 
 # Cоздать судо пользователя и добавить его в группу docker
 ```
-sudo chmod +x vps_ubuntu_newuser.sh && ./vps_ubuntu_newuser.sh -u userdoc -p P@S5w0rd
+./vps_ubuntu_newuser.sh -u msw -p 12345
 ```
-# Создает sudo-пользователя, меняет порт SSH,  запрещает root-доступ и включает вход только по ключам
 
+# Создает sudo-пользователя, меняет порт SSH,  запрещает root-доступ и включает вход только по ключам
 ```
-sudo chmod +x vps_ubuntu_newssh.sh && sudo ./vps_ubuntu_newssh.sh --user msw3
+su - msw
+sudo ./vps_ubuntu_newssh.sh --user msw2
 ```
 
 # Минимальная установка VNC и вводим для него пароль, который используем при подключении

@@ -127,7 +127,7 @@ echo "$USERNAME:$PASSWORD" | chpasswd
 
 # Добавление в группу sudo
 usermod -aG sudo "$USERNAME"
-usermod -aG docker "$USERNAME"
+#usermod -aG docker "$USERNAME"
 
     # Добавляем команды в файл .bashrc
     sudo -u "$USERNAME" bash -c "cat >> /home/$USERNAME/.bashrc << 'EOF'
