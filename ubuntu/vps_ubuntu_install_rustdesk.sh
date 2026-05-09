@@ -232,8 +232,7 @@ cat > /var/www/rustdesk/index.html <<EOF
     <div class="info">
         <h2>Connection Details</h2>
         <p><strong>ID Server:</strong> <code>$DOMAIN</code></p>
-        <p><strong>Key:</strong></p>
-        <div class="key">$RUSTDESK_KEY</div>
+        <p><strong>Key:</strong> Скрыт. Получите ключ командой: <code>sudo cat /opt/rustdesk/data/id_ed25519.pub</code></p>
     </div>
     <div class="info">
         <h2>Client Setup</h2>

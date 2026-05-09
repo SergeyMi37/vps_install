@@ -22,7 +22,8 @@ fi
 echo -e "${GREEN}=== Установка GitLab CE на VPS ===${NC}"
 
 # Запрос внешнего URL у пользователя
-read -p "Введите домен или IP вашего VPS (например, gitlab.example.com или 123.123.123.123): " EXTERNAL_URL
+SERVER_IP=$(ip -4 route get 1 | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+read -p "Введите домен или IP вашего VPS (например, gitlab.example.com или $SERVER_IP): " EXTERNAL_URL
 
 if [[ -z "$EXTERNAL_URL" ]]; then
     echo -e "${RED}URL не может быть пустым. Использую localhost${NC}"
