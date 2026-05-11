@@ -43,6 +43,13 @@ sudo apt install ./rustdesk-1.4.6-x86_64.deb
 # Установка GitLab на локальном порту
 sudo ./vps_ubuntu_install_gitlab.sh
 
+# После успешной установки GitLab будет доступен по указанному IP, а временный пароль root можно посмотреть командой:
+sudo cat /etc/gitlab/initial_root_password | grep Password:
+
+# Установка git-forgejo 
+sudo ./git-forgejo.sh
+
+
 # Установка self-hosted серверов для управления паролями 
 https://chat.deepseek.com/share/ljmn6jplibceeqkv1k
 
