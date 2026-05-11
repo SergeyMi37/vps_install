@@ -162,8 +162,9 @@ PROTOCOL     = http
 DOMAIN       = $DOMAIN
 ROOT_URL     = http://$DOMAIN
 HTTP_PORT    = 3000
-HTTP_ADDR    = 127.0.0.1
+HTTP_ADDR    = 0.0.0.0
 LANDING_PAGE = /explore
+APP_DATA_PATH = /var/lib/forgejo/data
 
 [database]
 DB_TYPE  = sqlite3
