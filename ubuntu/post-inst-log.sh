@@ -29,7 +29,11 @@ id "$NEW_USER" &>/dev/null || { useradd -m -s /bin/bash "$NEW_USER"; echo "$NEW_
 log "=== ЧАСТЬ B: Установка Docker ==="
 export DEBIAN_FRONTEND=noninteractive
 apt update -qq && apt upgrade -y -qq
-apt install -y -qq ca-certificates curl gnupg lsb-release git net-tools make mc docker-ce docker-ce-cli containerd.io
+apt install -y -qq ca-certificates curl gnupg lsb-release git net-tools make mc
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt update -qq
+apt install -y -qq docker-ce docker-ce-cli containerd.io
 usermod -aG docker "$NEW_USER"
 curl -sL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose
 log "Docker installed: $(docker --version)"
