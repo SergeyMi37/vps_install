@@ -1,12 +1,13 @@
 #!/bin/bash
 # Неинтерактивное создание sudo-пользователя и безопасная настройка SSH.
-# sudo wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu_new_user_ssh.sh && sudo chmod +x vps_ubuntu_new_user_ssh.sh && sudo ./vps_ubuntu_new_user_ssh.sh --user msw --key "ssh-ed25519 AAAAC3... user@host" --port 6553
+# sudo wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu_new_user_ssh.sh && sudo chmod +x vps_ubuntu_new_user_ssh.sh && sudo ./vps_ubuntu_new_user_ssh.sh --user msw --pass 123 --key "ssh-ed2551... user@host" --port 6553
 # Пример:
 #   sudo ./vps_ubuntu_new_user_ssh.sh --user msw --key "ssh-ed25519 AAAAC3... user@host" --port 2222
 
 set -euo pipefail
 
 NEW_USER="msw"
+NEW_USER_PASSWORD=""
 PUBLIC_KEY=""
 SSH_PORT="2222"
 ALLOW_EXISTING="yes"
@@ -28,16 +29,18 @@ show_help() {
 
 Опции:
   --user USERNAME       Имя пользователя. По умолчанию: ${NEW_USER}
+  --pass PASSWORD       Пароль пользователя. Если не указан, пароль не задается
   --key PUBLIC_KEY      Публичный SSH-ключ пользователя
   --port PORT           Новый SSH-порт. По умолчанию: ${SSH_PORT}
   --no-allow-existing   Завершиться ошибкой, если пользователь уже существует
   --help                Показать эту справку
 
 Пример:
-  sudo $0 --user john --key "ssh-ed25519 AAAAC3... john@local" --port 2222
+  sudo $0 --user john --pass 'StrongPassword' --key "ssh-ed25519 AAAAC3... john@local" --port 2222
 
 Важно:
-  Скрипт не задает пароль пользователю и отключает SSH-вход по паролю.
+  Скрипт отключает SSH-вход по паролю. --pass нужен для sudo/локального входа,
+  но не включает PasswordAuthentication в SSH.
   Если --key не указан, у пользователя уже должен быть непустой authorized_keys.
 EOF
     exit 0
@@ -52,6 +55,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --user)
             NEW_USER="${2:-}"
+            shift 2
+            ;;
+        --pass)
+            NEW_USER_PASSWORD="${2:-}"
             shift 2
             ;;
         --key)
@@ -83,6 +90,10 @@ done
 
 if [[ -n "$PUBLIC_KEY" ]] && [[ ! "$PUBLIC_KEY" =~ ^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp[0-9]+)[[:space:]] ]]; then
     error_exit "Некорректный публичный SSH-ключ"
+fi
+
+if [[ -n "$NEW_USER_PASSWORD" ]] && [[ "$NEW_USER_PASSWORD" == *:* ]]; then
+    error_exit "Пароль не должен содержать символ ':'"
 fi
 
 export DEBIAN_FRONTEND=noninteractive
@@ -193,6 +204,12 @@ if id "$NEW_USER" &>/dev/null; then
 else
     adduser --gecos "" --disabled-password "$NEW_USER"
     print_success "Пользователь ${NEW_USER} создан"
+fi
+
+if [[ -n "$NEW_USER_PASSWORD" ]]; then
+    print_info "Установка пароля для пользователя ${NEW_USER}..."
+    echo "${NEW_USER}:${NEW_USER_PASSWORD}" | chpasswd
+    print_success "Пароль пользователя установлен"
 fi
 
 usermod -aG sudo "$NEW_USER"
