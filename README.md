@@ -17,11 +17,11 @@ git clone https://github.com/SergeyMi37/vps_install && cd vps_install/ubuntu && 
 ./vps_ubuntu.sh
 ```
 
-# Создает sudo-пользователя, меняет порт SSH, запрещает root-доступ и включает вход только по ключам. Нужно будет ввести пароль для msw2, YES, бубличный ключ и YES
+# Добавить приложения, создать sudo-пользователя, поменять порт SSH, запрещает root-доступ и включает вход только по ключам. 
 ```
-su - msw
-cd vps_install/ubuntu
-./vps_ubuntu_newssh.sh --user msw2 
+wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu.sh && chmod +x vps_ubuntu.sh && ./vps_ubuntu.sh
+sudo wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/vps_ubuntu_new_user_ssh.sh && sudo chmod +x vps_ubuntu_new_user_ssh.sh && sudo ./vps_ubuntu_new_user_ssh.sh --user msw --pass 123 --key "ssh-ed25519..." --port 6553
+
 ```
 
 # Минимальная установка VNC и вводим для него пароль, который используем при подключении
