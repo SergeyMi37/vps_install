@@ -1,5 +1,5 @@
 # vps_install
-Скрипты по установки приложений на новые сервера
+Скрипты по установки приложений на новые сервера.
 
 # Cоздать судо пользователя
 ```
@@ -46,9 +46,18 @@ sudo ./vps_ubuntu_install_gitlab.sh
 # После успешной установки GitLab будет доступен по указанному IP, а временный пароль root можно посмотреть командой:
 sudo cat /etc/gitlab/initial_root_password | grep Password:
 
-# Установка git-forgejo 
+# Установка хостинга для git forgejo 
 sudo ./git-forgejo.sh
 
+# Создание пользователя админом через CLI
+forgejo admin user create \
+  --username ИМЯ \
+  --password ПАРОЛЬ \
+  --email EMAIL@ПРИМЕР.ru \
+  --admin false  # или true, если нужны права админа
+
+# Удалить пользователя админом через CLI
+forgejo admin user delete --username --purge USERNAME
 
 # Установка self-hosted серверов для управления паролями 
 https://chat.deepseek.com/share/ljmn6jplibceeqkv1k

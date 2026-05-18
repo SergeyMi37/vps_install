@@ -165,6 +165,8 @@ HTTP_PORT    = 3000
 HTTP_ADDR    = 0.0.0.0
 LANDING_PAGE = /explore
 APP_DATA_PATH = /var/lib/forgejo/data
+DISABLE_REGULAR_ORG_CREATION = true
+DISABLE_REGISTRATION = true
 
 [database]
 DB_TYPE  = sqlite3
@@ -176,6 +178,15 @@ ROOT = /var/lib/forgejo/repositories
 [security]
 INSTALL_LOCK = true
 SECRET_KEY = $(openssl rand -base64 24)
+
+[mailer]
+ENABLED        = true
+PROTOCOL       = smtps
+SMTP_ADDR      = smtp.yandex.ru    ; Адрес сервера
+SMTP_PORT      = 465               ; Порт
+USER           = your-login        ; Логин от ящика
+PASSWD         = your-password   ; Пароль (ОБЯЗАТЕЛЬНО в обратных кавычках!)
+FROM           = bot@example.com   ; С какого ящика отправлять
 
 [log]
 MODE = file

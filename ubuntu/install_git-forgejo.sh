@@ -1,5 +1,5 @@
 #!/bin/bash
-# wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/git-forgejo.sh && sudo chmod +x git-forgejo.sh && ./git-forgejo.sh
+# wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/install_git-forgejo.sh && sudo chmod +x git-forgejo.sh && ./git-forgejo.sh
 # =====================================================
 # FINAL SCRIPT - Forgejo Installation with all fixes
 # Исправлены все ошибки:
