@@ -259,11 +259,20 @@ install_pangolin() {
     # Создание директории
     mkdir -p "$INSTALL_DIR"
     cd "$INSTALL_DIR"
-    
-    # Клонирование репозитория
-    git clone https://github.com/fosrl/pangolin.git .
-    check_error "Не удалось клонировать репозиторий Pangolin"
-    
+     
+    # Клонирование или обновление репозитория
+    if [ -d .git ]; then
+        git pull --ff-only
+        check_error "Не удалось обновить репозиторий Pangolin"
+    elif [ -z "$(find . -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+        git clone https://github.com/fosrl/pangolin.git .
+        check_error "Не удалось клонировать репозиторий Pangolin"
+    else
+        log "ОШИБКА: директория $INSTALL_DIR уже существует и не пуста"
+        log "Укажите другую директорию через --install-dir или очистите текущую"
+        exit 1
+    fi
+     
     # Создание .env файла
     cat > .env << EOF
 # Pangolin конфигурация
