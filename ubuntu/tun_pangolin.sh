@@ -1,33 +1,124 @@
 #!/bin/bash
 
 # ============================================
-# Неинтерактивный установщик Pangolin Server
-# Версия: 1.0
+# CLI-установщик Pangolin Server
+# Версия: 1.1
 # ============================================
 
 set -euo pipefail
 
-# === КОНФИГУРАЦИЯ (ИЗМЕНИТЕ ПОД СВОИ ДАННЫЕ) ===
-PUBLIC_IP=$(ip -4 route get 1 | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')       # Например: 203.0.113.10
-SUBDOMAIN="pangolin.my.site"                    # Ваш субдомен
-ADMIN_EMAIL="admin@my.site"                     # Email для Let's Encrypt
-PANGO_VERSION="latest"                          # Версия Pangolin
-INSTALL_DIR="/opt/pangolin"                     # Директория установки
-LOG_FILE="/root/pangolin_install.log"           # Файл протокола
-CLIENT_INSTRUCTIONS_FILE="/root/pangolin_client_instructions.txt"  # Инструкции для клиентов
+# === ЗНАЧЕНИЯ ПО УМОЛЧАНИЮ, ПЕРЕОПРЕДЕЛЯЮТСЯ ЧЕРЕЗ CLI ===
+PUBLIC_IP=$(ip -4 route get 1 | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+SUBDOMAIN=""
+ADMIN_EMAIL=""
+PANGO_VERSION="latest"
+INSTALL_DIR="/opt/pangolin"
+LOG_FILE="/root/pangolin_install.log"
+CLIENT_INSTRUCTIONS_FILE="/root/pangolin_client_instructions.txt"
+CREDENTIALS_FILE="/root/pangolin_credentials.txt"
+INSTALLATION_INFO_FILE="/root/pangolin_installation_info.txt"
+HEALTH_CHECK_FILE="/usr/local/bin/pangolin-health-check"
+HEALTH_LOG_FILE="/var/log/pangolin-health.log"
 
-# ============================================
-# НАЧАЛО ЛОГИРОВАНИЯ
-# ============================================
-exec > >(tee -a "$LOG_FILE") 2>&1
+GERBIL_PORT="51820"
+GERBIL_PEERS_PORT="51821"
+TRAEFIK_PORT="80"
+TRAEFIK_SECURE_PORT="443"
+TRAEFIK_DASHBOARD_PORT="8080"
+NEWT_PORT="8443"
+API_PORT="9000"
+API_SECURE_PORT="9001"
+DOCKER_NETWORK="pangolin_network"
 
-echo "========================================"
-echo "Установка Pangolin Server начата: $(date)"
-echo "========================================"
-echo "Публичный IP: $PUBLIC_IP"
-echo "Субдомен: $SUBDOMAIN"
-echo "Email: $ADMIN_EMAIL"
-echo "========================================"
+usage() {
+    printf '%s\n' \
+        "Usage: sudo $0 --subdomain DOMAIN --admin-email EMAIL [OPTIONS]" \
+        "" \
+        "Required:" \
+        "  -d, --subdomain DOMAIN              Домен Pangolin, например pangolin.example.com" \
+        "  -e, --admin-email EMAIL             Email администратора и Let's Encrypt" \
+        "" \
+        "Optional:" \
+        "  -i, --public-ip IP                  Публичный IP (по умолчанию: автоопределение)" \
+        "  -v, --pango-version VERSION         Версия Pangolin для инструкций (по умолчанию: latest)" \
+        "      --install-dir PATH              Директория установки (по умолчанию: /opt/pangolin)" \
+        "      --log-file PATH                 Лог установки (по умолчанию: /root/pangolin_install.log)" \
+        "      --client-instructions-file PATH Инструкции клиентам" \
+        "      --credentials-file PATH         Файл с учетными данными администратора" \
+        "      --installation-info-file PATH   Файл с информацией об установке" \
+        "      --health-check-file PATH        Путь скрипта health-check" \
+        "      --health-log-file PATH          Лог health-check" \
+        "      --gerbil-port PORT              WireGuard порт (по умолчанию: 51820)" \
+        "      --gerbil-peers-port PORT        WireGuard peers порт (по умолчанию: 51821)" \
+        "      --traefik-port PORT             HTTP порт (по умолчанию: 80)" \
+        "      --traefik-secure-port PORT      HTTPS порт (по умолчанию: 443)" \
+        "      --traefik-dashboard-port PORT   Traefik dashboard порт (по умолчанию: 8080)" \
+        "      --newt-port PORT                Newt порт (по умолчанию: 8443)" \
+        "      --api-port PORT                 API порт (по умолчанию: 9000)" \
+        "      --api-secure-port PORT          Secure API порт (по умолчанию: 9001)" \
+        "      --docker-network NAME           Docker сеть (по умолчанию: pangolin_network)" \
+        "  -h, --help                          Показать справку" \
+        "" \
+        "Example:" \
+        "  sudo $0 -d pangolin.example.com -e admin@example.com --public-ip 203.0.113.10"
+}
+
+require_value() {
+    if [ -z "${2:-}" ]; then
+        echo "ОШИБКА: параметр $1 требует значение" >&2
+        exit 1
+    fi
+}
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -d|--subdomain) require_value "$1" "${2:-}"; SUBDOMAIN="$2"; shift 2 ;;
+            -e|--admin-email) require_value "$1" "${2:-}"; ADMIN_EMAIL="$2"; shift 2 ;;
+            -i|--public-ip) require_value "$1" "${2:-}"; PUBLIC_IP="$2"; shift 2 ;;
+            -v|--pango-version) require_value "$1" "${2:-}"; PANGO_VERSION="$2"; shift 2 ;;
+            --install-dir) require_value "$1" "${2:-}"; INSTALL_DIR="$2"; shift 2 ;;
+            --log-file) require_value "$1" "${2:-}"; LOG_FILE="$2"; shift 2 ;;
+            --client-instructions-file) require_value "$1" "${2:-}"; CLIENT_INSTRUCTIONS_FILE="$2"; shift 2 ;;
+            --credentials-file) require_value "$1" "${2:-}"; CREDENTIALS_FILE="$2"; shift 2 ;;
+            --installation-info-file) require_value "$1" "${2:-}"; INSTALLATION_INFO_FILE="$2"; shift 2 ;;
+            --health-check-file) require_value "$1" "${2:-}"; HEALTH_CHECK_FILE="$2"; shift 2 ;;
+            --health-log-file) require_value "$1" "${2:-}"; HEALTH_LOG_FILE="$2"; shift 2 ;;
+            --gerbil-port) require_value "$1" "${2:-}"; GERBIL_PORT="$2"; shift 2 ;;
+            --gerbil-peers-port) require_value "$1" "${2:-}"; GERBIL_PEERS_PORT="$2"; shift 2 ;;
+            --traefik-port) require_value "$1" "${2:-}"; TRAEFIK_PORT="$2"; shift 2 ;;
+            --traefik-secure-port) require_value "$1" "${2:-}"; TRAEFIK_SECURE_PORT="$2"; shift 2 ;;
+            --traefik-dashboard-port) require_value "$1" "${2:-}"; TRAEFIK_DASHBOARD_PORT="$2"; shift 2 ;;
+            --newt-port) require_value "$1" "${2:-}"; NEWT_PORT="$2"; shift 2 ;;
+            --api-port) require_value "$1" "${2:-}"; API_PORT="$2"; shift 2 ;;
+            --api-secure-port) require_value "$1" "${2:-}"; API_SECURE_PORT="$2"; shift 2 ;;
+            --docker-network) require_value "$1" "${2:-}"; DOCKER_NETWORK="$2"; shift 2 ;;
+            -h|--help) usage; exit 0 ;;
+            *) echo "ОШИБКА: неизвестный параметр: $1" >&2; usage; exit 1 ;;
+        esac
+    done
+}
+
+validate_config() {
+    if [ -z "$SUBDOMAIN" ] || [ -z "$ADMIN_EMAIL" ]; then
+        echo "ОШИБКА: обязательны --subdomain и --admin-email" >&2
+        usage
+        exit 1
+    fi
+}
+
+start_logging() {
+    exec > >(tee -a "$LOG_FILE") 2>&1
+
+    echo "========================================"
+    echo "Установка Pangolin Server начата: $(date)"
+    echo "========================================"
+    echo "Публичный IP: $PUBLIC_IP"
+    echo "Субдомен: $SUBDOMAIN"
+    echo "Email: $ADMIN_EMAIL"
+    echo "Директория установки: $INSTALL_DIR"
+    echo "========================================"
+}
 
 # ============================================
 # ФУНКЦИЯ ЛОГИРОВАНИЯ
@@ -101,7 +192,16 @@ configure_firewall() {
     log "Настройка брандмауэра..."
     
     # Порты для Pangolin
-    PORTS=(80 443 51820 51821 8443 8080 9000 9001)
+    PORTS=(
+        "$TRAEFIK_PORT"
+        "$TRAEFIK_SECURE_PORT"
+        "$GERBIL_PORT"
+        "$GERBIL_PEERS_PORT"
+        "$NEWT_PORT"
+        "$TRAEFIK_DASHBOARD_PORT"
+        "$API_PORT"
+        "$API_SECURE_PORT"
+    )
     
     case $OS in
         ubuntu|debian)
@@ -152,7 +252,10 @@ install_docker() {
 # ============================================
 install_pangolin() {
     log "Установка Pangolin..."
-    
+    PANGO_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
+    POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
+    REDIS_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
+     
     # Создание директории
     mkdir -p "$INSTALL_DIR"
     cd "$INSTALL_DIR"
@@ -168,33 +271,33 @@ PANGO_PUBLIC_IP=${PUBLIC_IP}
 PANGO_DOMAIN=${SUBDOMAIN}
 PANGO_EMAIL=${ADMIN_EMAIL}
 PANGO_ADMIN_EMAIL=${ADMIN_EMAIL}
-PANGO_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
+PANGO_ADMIN_PASSWORD=${PANGO_ADMIN_PASSWORD}
 
 # База данных
-POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 DATABASE_URL=postgresql://pangolin:${POSTGRES_PASSWORD}@postgres:5432/pangolin
 
 # Redis
-REDIS_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
+REDIS_PASSWORD=${REDIS_PASSWORD}
 
 # Gerbil (WireGuard)
-GERBIL_PORT=51820
-GERBIL_PEERS_PORT=51821
+GERBIL_PORT=${GERBIL_PORT}
+GERBIL_PEERS_PORT=${GERBIL_PEERS_PORT}
 
 # Traefik
-TRAEFIK_PORT=80
-TRAEFIK_SECURE_PORT=443
-TRAEFIK_DASHBOARD_PORT=8080
+TRAEFIK_PORT=${TRAEFIK_PORT}
+TRAEFIK_SECURE_PORT=${TRAEFIK_SECURE_PORT}
+TRAEFIK_DASHBOARD_PORT=${TRAEFIK_DASHBOARD_PORT}
 
 # Newt (прокси)
-NEWT_PORT=8443
+NEWT_PORT=${NEWT_PORT}
 
 # API порт
-API_PORT=9000
-API_SECURE_PORT=9001
+API_PORT=${API_PORT}
+API_SECURE_PORT=${API_SECURE_PORT}
 
 # Docker сеть
-DOCKER_NETWORK=pangolin_network
+DOCKER_NETWORK=${DOCKER_NETWORK}
 EOF
     
     # Запуск через Docker Compose
@@ -205,10 +308,10 @@ EOF
     
     # Сохранение пароля администратора
     ADMIN_PASSWORD=$(grep PANGO_ADMIN_PASSWORD .env | cut -d'=' -f2)
-    echo "ПАРОЛЬ АДМИНИСТРАТОРА PANGO: $ADMIN_PASSWORD" > /root/pangolin_credentials.txt
-    chmod 600 /root/pangolin_credentials.txt
-    
-    log "Учетные данные сохранены в /root/pangolin_credentials.txt"
+    echo "ПАРОЛЬ АДМИНИСТРАТОРА PANGO: $ADMIN_PASSWORD" > "$CREDENTIALS_FILE"
+    chmod 600 "$CREDENTIALS_FILE"
+     
+    log "Учетные данные сохранены в $CREDENTIALS_FILE"
 }
 
 # ============================================
@@ -232,7 +335,7 @@ configure_https() {
     # Временная Nginx конфигурация для ACME
     cat > /etc/nginx/sites-available/pangolin << EOF
 server {
-    listen 80;
+    listen ${TRAEFIK_PORT};
     server_name ${SUBDOMAIN};
     
     location /.well-known/acme-challenge/ {
@@ -331,8 +434,8 @@ Invoke-WebRequest -Uri "https://github.com/fosrl/pangolin/releases/latest/downlo
 1. Запустите скачанный файл pangolin.exe
 2. В окне настроек введите:
    - Server Address: ${SUBDOMAIN}
-   - Server Port: 443
-   - API Port: 9001
+   - Server Port: ${TRAEFIK_SECURE_PORT}
+   - API Port: ${API_SECURE_PORT}
 3. Нажмите "Connect" и следуйте инструкциям
 4. При запросе учетных данных используйте данные администратора
 
@@ -354,10 +457,10 @@ wget https://github.com/fosrl/pangolin/releases/latest/download/pangolin-linux-a
 chmod +x /usr/local/bin/pangolin
 
 # Настройка
-sudo pangolin config set --server ${SUBDOMAIN} --port 443 --api-port 9001
+sudo pangolin config set --server ${SUBDOMAIN} --port ${TRAEFIK_SECURE_PORT} --api-port ${API_SECURE_PORT}
 
 # Автозапуск как сервис
-sudo tee /etc/systemd/system/pangolin-client.service > /dev/null << EOF
+sudo tee /etc/systemd/system/pangolin-client.service > /dev/null << 'CLIENT_SERVICE_EOF'
 [Unit]
 Description=Pangolin Client Service
 After=network.target
@@ -370,7 +473,7 @@ RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-EOF
+CLIENT_SERVICE_EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now pangolin-client
@@ -390,14 +493,14 @@ chmod +x /usr/local/bin/pangolin
 chcon -t bin_t /usr/local/bin/pangolin
 
 # Настройка брандмауэра (если нужно)
-sudo firewall-cmd --permanent --add-port=51820/udp
+sudo firewall-cmd --permanent --add-port=${GERBIL_PORT}/udp
 sudo firewall-cmd --reload
 
 Шаг 2: Настройка клиента
-pangolin config set --server ${SUBDOMAIN} --port 443 --api-port 9001
+pangolin config set --server ${SUBDOMAIN} --port ${TRAEFIK_SECURE_PORT} --api-port ${API_SECURE_PORT}
 
 Шаг 3: Создание systemd сервиса
-cat > /etc/systemd/system/pangolin-client.service << EOF
+cat > /etc/systemd/system/pangolin-client.service << 'CLIENT_SERVICE_EOF'
 [Unit]
 Description=Pangolin Client Service
 After=network.target
@@ -410,7 +513,7 @@ RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-EOF
+CLIENT_SERVICE_EOF
 
 systemctl daemon-reload
 systemctl enable --now pangolin-client
@@ -443,9 +546,9 @@ restorecon -v /usr/local/bin/pangolin
 
 Проблема: Не удается подключиться к серверу
 Решение:
-- Проверьте, что порты 443 и 9001 открыты на клиенте
+- Проверьте, что порты ${TRAEFIK_SECURE_PORT} и ${API_SECURE_PORT} открыты на клиенте
 - Проверьте DNS разрешение: nslookup ${SUBDOMAIN}
-- Проверьте доступность сервера: telnet ${SUBDOMAIN} 443
+- Проверьте доступность сервера: telnet ${SUBDOMAIN} ${TRAEFIK_SECURE_PORT}
 
 Проблема: Сертификат недействителен
 Решение:
@@ -455,18 +558,18 @@ restorecon -v /usr/local/bin/pangolin
 
 Проблема: Брандмауэр блокирует подключение
 Решение:
-- Linux: sudo ufw allow 443/tcp && sudo ufw allow 9001/tcp
+- Linux: sudo ufw allow ${TRAEFIK_SECURE_PORT}/tcp && sudo ufw allow ${API_SECURE_PORT}/tcp
 - Windows: Добавьте pangolin.exe в исключения брандмауэра
 
 ========================================================
 ДАННЫЕ ДЛЯ ПОДКЛЮЧЕНИЯ:
 ========================================================
 Сервер: ${SUBDOMAIN}
-Порт: 443
-API порт: 9001
+Порт: ${TRAEFIK_SECURE_PORT}
+API порт: ${API_SECURE_PORT}
 Админ-панель: https://${SUBDOMAIN}
 Логин: admin
-Пароль: (указан в /root/pangolin_credentials.txt на сервере)
+Пароль: (указан в ${CREDENTIALS_FILE} на сервере)
 
 ========================================================
 Установка завершена: $(date)
@@ -483,42 +586,42 @@ EOF
 create_health_check() {
     log "Создание скрипта проверки здоровья..."
     
-    cat > /usr/local/bin/pangolin-health-check << 'EOF'
+    cat > "$HEALTH_CHECK_FILE" << EOF
 #!/bin/bash
 # Скрипт проверки состояния Pangolin
 
-DOCKER_COMPOSE_DIR="/opt/pangolin"
-LOG_FILE="/var/log/pangolin-health.log"
+DOCKER_COMPOSE_DIR="${INSTALL_DIR}"
+LOG_FILE="${HEALTH_LOG_FILE}"
 
 check_service() {
-    echo "=== Проверка Pangolin: $(date) ===" | tee -a "$LOG_FILE"
-    
+    echo "=== Проверка Pangolin: \$(date) ===" | tee -a "\$LOG_FILE"
+     
     # Проверка Docker контейнеров
-    cd "$DOCKER_COMPOSE_DIR" || exit 1
-    docker-compose ps | tee -a "$LOG_FILE"
-    
+    cd "\$DOCKER_COMPOSE_DIR" || exit 1
+    docker-compose ps | tee -a "\$LOG_FILE"
+     
     # Проверка портов
-    echo "Проверка портов:" | tee -a "$LOG_FILE"
-    for port in 80 443 8443 9000 9001 51820; do
-        if netstat -tuln | grep -q ":$port "; then
-            echo "  Порт $port: ОТКРЫТ" | tee -a "$LOG_FILE"
+    echo "Проверка портов:" | tee -a "\$LOG_FILE"
+    for port in ${TRAEFIK_PORT} ${TRAEFIK_SECURE_PORT} ${NEWT_PORT} ${API_PORT} ${API_SECURE_PORT} ${GERBIL_PORT}; do
+        if netstat -tuln | grep -q ":\$port "; then
+            echo "  Порт \$port: ОТКРЫТ" | tee -a "\$LOG_FILE"
         else
-            echo "  Порт $port: ЗАКРЫТ" | tee -a "$LOG_FILE"
+            echo "  Порт \$port: ЗАКРЫТ" | tee -a "\$LOG_FILE"
         fi
     done
-    
+     
     # Проверка использования ресурсов
-    echo "Использование ресурсов:" | tee -a "$LOG_FILE"
-    docker stats --no-stream | grep pangolin | tee -a "$LOG_FILE"
+    echo "Использование ресурсов:" | tee -a "\$LOG_FILE"
+    docker stats --no-stream | grep pangolin | tee -a "\$LOG_FILE"
 }
 
 check_service
 EOF
-    
-    chmod +x /usr/local/bin/pangolin-health-check
-    
+     
+    chmod +x "$HEALTH_CHECK_FILE"
+     
     # Добавление в cron (каждые 6 часов)
-    echo "0 */6 * * * root /usr/local/bin/pangolin-health-check" > /etc/cron.d/pangolin-health
+    echo "0 */6 * * * root $HEALTH_CHECK_FILE" > /etc/cron.d/pangolin-health
 }
 
 # ============================================
@@ -528,7 +631,7 @@ finalize_installation() {
     log "Завершение установки..."
     
     # Сохранение информации об установке
-    cat > /root/pangolin_installation_info.txt << EOF
+    cat > "$INSTALLATION_INFO_FILE" << EOF
 ========================================
 ИНФОРМАЦИЯ ОБ УСТАНОВКЕ PANGO
 ========================================
@@ -539,12 +642,12 @@ finalize_installation() {
 Email администратора: ${ADMIN_EMAIL}
 
 Веб-интерфейс: https://${SUBDOMAIN}
-API: https://${SUBDOMAIN}:9001
+API: https://${SUBDOMAIN}:${API_SECURE_PORT}
 
 Директория установки: ${INSTALL_DIR}
 Файл конфигурации: ${INSTALL_DIR}/.env
 
-Учетные данные: /root/pangolin_credentials.txt
+Учетные данные: ${CREDENTIALS_FILE}
 Инструкции для клиентов: ${CLIENT_INSTRUCTIONS_FILE}
 Лог установки: ${LOG_FILE}
 
@@ -557,7 +660,7 @@ API: https://${SUBDOMAIN}:9001
 ========================================
 EOF
     
-    chmod 600 /root/pangolin_installation_info.txt
+    chmod 600 "$INSTALLATION_INFO_FILE"
     log "Финальная информация сохранена"
 }
 
@@ -565,6 +668,10 @@ EOF
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================
 main() {
+    parse_args "$@"
+    validate_config
+    start_logging
+
     log "========================================="
     log "НАЧАЛО УСТАНОВКИ PANGO SERVER"
     log "========================================="
@@ -594,11 +701,11 @@ main() {
     echo "🌐 Веб-интерфейс: https://${SUBDOMAIN}"
     echo "📝 Инструкции: ${CLIENT_INSTRUCTIONS_FILE}"
     echo "📋 Лог: ${LOG_FILE}"
-    echo "🔑 Учетные данные: /root/pangolin_credentials.txt"
+    echo "🔑 Учетные данные: ${CREDENTIALS_FILE}"
     echo ""
 }
 
 # Запуск установки
-main
+main "$@"
 
 exit 0
