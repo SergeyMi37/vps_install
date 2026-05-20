@@ -78,6 +78,7 @@ https://chat.deepseek.com/share/3jmovy3u2n8vdt4dui
 https://chat.deepseek.com/share/3ccm38csi13cbg8s24
 
 # Создание локального NAS и доступ к нему из интернета через pangolin, frp или SirTunnel
+sudo wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/pgrok.sh && sudo chmod +x pgrok.sh && sudo ./pgrok.sh -d pgrok.mydomain.com -e admin@mydomain.com -p /opt/pgrok
 https://chat.deepseek.com/share/9rqlfknrtc2d1untl0
 
 # Open Source Alternatives to Ingrok
