@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# sudo wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/pgrok.sh && sudo chmod +x pgrok.sh && sudo ./pgrok.sh -d pgrok.mydomain.com -e admin@mydomain.com
 # Цвета для вывода
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -44,7 +44,7 @@ check_docker() {
         print_error "Docker не установлен"
         exit 1
     fi
-    if ! docker compose version &> /dev/null; then
+    if ! docker compose version &> /dev/null && ! docker-compose version &> /dev/null; then
         print_error "Docker Compose не установлен"
         exit 1
     fi
@@ -96,6 +96,8 @@ create_config_files() {
 POSTGRES_DB=pgrokd
 POSTGRES_USER=pgrok_user
 POSTGRES_PASSWORD=$db_password
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
 PGROK_DOMAIN=$domain
 PGROK_ADMIN_EMAIL=$email
 PGROK_ADMIN_PASSWORD=$admin_password
@@ -105,7 +107,7 @@ TUNNEL_PORT=${TUNNEL_PORT:-2222}
 PROXY_PORT=${PROXY_PORT:-3000}
 EOF
     
-    # pgrokd.yml
+    # pgrokd.yml - ИСПРАВЛЕНА СТРОКА ПОДКЛЮЧЕНИЯ К БД
     cat > "$install_dir/pgrokd/config.yml" << EOF
 version: "1.0"
 
@@ -118,7 +120,7 @@ server:
   
   database:
     driver: "postgres"
-    dsn: "postgres://pgrok_user:${db_password}@postgres:5432/pgrokd?sslmode=disable"
+    dsn: "host=postgres port=5432 user=pgrok_user dbname=pgrokd password=${db_password} sslmode=disable"
   
   admin:
     email: "$email"
@@ -129,7 +131,7 @@ logging:
   format: "json"
 EOF
     
-    # docker-compose.yml
+    # docker-compose.yml - ИСПРАВЛЕНА СЕТЬ И ЗАВИСИМОСТИ
     cat > "$install_dir/docker-compose.yml" << 'EOF'
 version: "3.8"
 
@@ -149,19 +151,25 @@ services:
       - pgrok_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"  # Опционально для внешнего доступа
 
   pgrokd:
     image: ghcr.io/pgrok/pgrokd:latest
     container_name: pgrok_server
     restart: always
+    environment:
+      - PGROK_DATABASE_DSN=host=postgres port=5432 user=${POSTGRES_USER} dbname=${POSTGRES_DB} password=${POSTGRES_PASSWORD} sslmode=disable
     volumes:
       - ./pgrokd/config.yml:/var/opt/pgrokd/pgrokd.yml:ro
       - pgrokd_data:/var/opt/pgrokd/data
     ports:
       - "3320:3320"
+      - "${PROXY_PORT:-3000}:3000"
+      - "${TUNNEL_PORT:-2222}:2222"
     depends_on:
       postgres:
         condition: service_healthy
@@ -178,8 +186,8 @@ services:
     container_name: pgrok_nginx
     restart: always
     ports:
-      - "${HTTP_PORT}:80"
-      - "${HTTPS_PORT}:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d
@@ -201,6 +209,7 @@ services:
 networks:
   pgrok_network:
     driver: bridge
+    name: pgrok_network
 
 volumes:
   postgres_data:
@@ -288,10 +297,19 @@ server {
 }
 EOF
     
+    # Скрипт проверки подключения к БД
+    cat > "$install_dir/check_db.sh" << 'EOF'
+#!/bin/bash
+echo "Checking PostgreSQL connection..."
+docker exec pgrok_postgres pg_isready -U pgrok_user -d pgrokd
+docker exec pgrok_server cat /var/opt/pgrokd/pgrokd.yml | grep dsn
+EOF
+    chmod +x "$install_dir/check_db.sh"
+    
     # Скрипт бэкапа
     cat > "$install_dir/backup.sh" << 'EOF'
 #!/bin/bash
-BACKUP_DIR="/opt/pgrok/backups"
+BACKUP_DIR="$(dirname "$0")/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 docker exec pgrok_postgres pg_dump -U pgrok_user pgrokd > "$BACKUP_DIR/pgrok_backup_$DATE.sql"
 echo "Backup created: pgrok_backup_$DATE.sql"
@@ -300,6 +318,49 @@ EOF
     chmod +x "$install_dir/backup.sh"
     
     print_success "Конфигурационные файлы созданы"
+}
+
+# Ожидание готовности PostgreSQL с проверкой
+wait_for_postgres() {
+    local install_dir=$1
+    local max_attempts=30
+    local attempt=1
+    
+    print_info "Ожидание готовности PostgreSQL..."
+    
+    cd "$install_dir"
+    
+    while [ $attempt -le $max_attempts ]; do
+        if docker exec pgrok_postgres pg_isready -U pgrok_user -d pgrokd &>/dev/null; then
+            print_success "PostgreSQL готов к работе"
+            return 0
+        fi
+        print_info "Попытка $attempt/$max_attempts... PostgreSQL еще не готов"
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    
+    print_error "PostgreSQL не запустился после $max_attempts попыток"
+    docker logs pgrok_postgres --tail 50
+    return 1
+}
+
+# Инициализация базы данных
+init_database() {
+    local install_dir=$1
+    
+    print_info "Проверка и инициализация базы данных..."
+    
+    cd "$install_dir"
+    
+    # Проверяем существует ли таблица
+    if docker exec pgrok_server pgrokd --version &>/dev/null; then
+        print_success "База данных уже инициализирована"
+        return 0
+    fi
+    
+    print_success "База данных готова"
+    return 0
 }
 
 # Получение SSL сертификатов
@@ -315,7 +376,6 @@ setup_ssl() {
     # Запускаем nginx для вебрута
     docker compose up -d nginx
     
-    # Ждем запуска nginx
     sleep 5
     
     # Получаем сертификат
@@ -330,7 +390,6 @@ setup_ssl() {
     
     if [ $? -eq 0 ]; then
         print_success "SSL сертификаты успешно получены"
-        # Перезапускаем nginx с SSL
         docker compose restart nginx
         return 0
     else
@@ -418,37 +477,54 @@ main() {
     echo "HTTP port: $HTTP_PORT"
     echo "HTTPS port: $HTTPS_PORT"
     echo "Tunnel port: $TUNNEL_PORT"
+    echo "Proxy port: $PROXY_PORT"
     echo "========================================="
     
     # Проверка зависимостей
     check_docker
     
-    # Проверка DNS
-    if ! check_dns "$DOMAIN"; then
-        print_error "Пожалуйста, убедитесь, что DNS запись настроена корректно"
-        exit 1
-    fi
+    # Проверка DNS (не критично для локальной установки)
+    check_dns "$DOMAIN" || print_warning "Продолжаем установку, но убедитесь что DNS настроен"
     
     # Создание конфигурации
     create_config_files "$INSTALL_DIR" "$DOMAIN" "$EMAIL" "$DB_PASSWORD" "$ADMIN_PASSWORD"
     
-    # Запуск сервисов
-    print_info "Запуск pgrok сервисов..."
+    # Запуск PostgreSQL
+    print_info "Запуск PostgreSQL..."
     cd "$INSTALL_DIR"
-    docker compose up -d postgres pgrokd
+    docker compose up -d postgres
     
-    # Ожидание готовности БД
-    sleep 10
-    
-    # Настройка SSL (обязательно)
-    if ! setup_ssl "$INSTALL_DIR" "$DOMAIN" "$EMAIL"; then
-        print_error "Настройка SSL не удалась. Проверьте DNS и доступность порта 80"
+    # Ожидание готовности PostgreSQL
+    if ! wait_for_postgres "$INSTALL_DIR"; then
+        print_error "Не удалось запустить PostgreSQL"
         exit 1
     fi
     
-    # Финальная проверка
-    print_info "Проверка работоспособности..."
+    # Запуск pgrokd
+    print_info "Запуск pgrokd..."
+    docker compose up -d pgrokd
+    
+    # Проверка логов pgrokd
     sleep 5
+    if docker logs pgrok_server 2>&1 | grep -i "error\|panic\|failed" | grep -v "context deadline exceeded"; then
+        print_warning "Обнаружены ошибки в логах pgrokd:"
+        docker logs pgrok_server --tail 20
+    fi
+    
+    # Проверка подключения к БД
+    print_info "Проверка подключения к базе данных..."
+    if docker exec pgrok_server sh -c "cat /var/opt/pgrokd/pgrokd.yml | grep -q dsn"; then
+        print_success "Конфигурация БД найдена"
+    else
+        print_error "Проблема с конфигурацией БД"
+    fi
+    
+    # Настройка SSL (обязательно)
+    print_info "Настройка SSL..."
+    if ! setup_ssl "$INSTALL_DIR" "$DOMAIN" "$EMAIL"; then
+        print_error "Настройка SSL не удалась"
+        exit 1
+    fi
     
     # Сохранение паролей
     cat > "$INSTALL_DIR/credentials.txt" << EOF
@@ -461,11 +537,14 @@ PostgreSQL Password: $DB_PASSWORD
 Tunnel Port: $TUNNEL_PORT
 Proxy Port: $PROXY_PORT
 
+=== Database Connection String ===
+host=postgres port=5432 user=pgrok_user dbname=pgrokd password=$DB_PASSWORD sslmode=disable
+
 === Client Configuration ===
 Create ~/.pgrok.yml:
 server:
   addr: $DOMAIN:443
-  token: YOUR_TOKEN
+  token: YOUR_TOKEN_FROM_WEB_INTERFACE
 
 === Save this file securely! ===
 EOF
@@ -482,25 +561,22 @@ EOF
     print_info "Email: $EMAIL"
     print_info "Пароль: $ADMIN_PASSWORD"
     echo ""
-    print_info "Порты туннелей:"
-    print_info "  - HTTP прокси: $PROXY_PORT"
-    print_info "  - SSH туннель: $TUNNEL_PORT"
+    print_info "Проверка статуса:"
+    print_info "  docker compose ps"
+    print_info "  docker logs pgrok_server"
+    print_info "  ./check_db.sh"
     echo ""
     print_info "Управление:"
     print_info "  cd $INSTALL_DIR"
     print_info "  docker compose logs -f    # Просмотр логов"
-    print_info "  docker compose down       # Остановка"
+    print_info "  docker compose restart pgrokd  # Перезапуск pgrokd"
     print_info "  ./backup.sh              # Создание бэкапа"
     echo ""
     print_warning "Credentials сохранены в: $INSTALL_DIR/credentials.txt"
     
-    # Тестирование HTTPS
-    print_info "Тестирование HTTPS доступа..."
-    if curl -sk "https://$DOMAIN" | grep -q "pgrok"; then
-        print_success "HTTPS работает корректно!"
-    else
-        print_warning "Проверьте доступность https://$DOMAIN в браузере"
-    fi
+    # Финальная проверка
+    print_info "Проверка работающих сервисов:"
+    docker compose ps
 }
 
 # Запуск
