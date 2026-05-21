@@ -77,16 +77,55 @@ https://chat.deepseek.com/share/3jmovy3u2n8vdt4dui
 # Аналоги NextCloud для VPS
 https://chat.deepseek.com/share/3ccm38csi13cbg8s24
 
-# Создание локального NAS и доступ к нему из интернета через pangolin, frp или SirTunnel
-sudo wget https://raw.githubusercontent.com/SergeyMi37/vps_install/master/ubuntu/pgrok.sh && sudo chmod +x pgrok.sh && sudo ./pgrok.sh -d pgrok.mydomain.com -e admin@mydomain.com -p /opt/pgrok
-https://chat.deepseek.com/share/9rqlfknrtc2d1untl0
+# Создание локального NAS и доступ к нему из интернета через frp 
+Первый запуск:
+bash
+sudo ./install_frp.sh \
+  -d example.site \
+  --setup-caddy \
+  --caddy-email admin@example.site \
+  --proxy-pass "frp.example.site:7500" \
+  --proxy-pass "gitea.example.site:3000" \
+  --proxy-pass "jenkins.example.site:8080" \
+  --proxy-pass "wordpress.example.site:8081"
+Результат: Добавлены все 4 прокси.
 
-# Open Source Alternatives to Ingrok
-https://chat.deepseek.com/share/aookwc9dw6dno2hmnt
+Второй запуск (дополнение):
+bash
+sudo ./install_frp.sh \
+  -d example.site \
+  --setup-caddy \
+  --proxy-pass "nas.example.site:192.168.1.100:5000" \
+  --proxy-pass "plex.example.site:192.168.1.100:32400" \
+  --proxy-pass "camera.example.site:192.168.1.50:8080"
+Результат: Будет 7 прокси (4 старых + 3 новых).
 
-https://github.com/bjarneo/stairway
-https://github.com/pgrok/pgrok
-https://github.com/anderspitman/SirTunnel
-https://github.com/anderspitman/awesome-tunneling
+🎯 Команды для управления
 
+Просмотр текущих прокси:
+bash
+grep -E "^[a-z].*\.{$" /etc/caddy/Caddyfile | sed 's/ {$//'
+Удаление конкретного прокси:
+bash
+sudo nano /etc/caddy/Caddyfile
 
+# Удалите блок нужного домена и выполните:
+sudo systemctl reload caddy
+Полное обновление (замена всех правил):
+bash
+
+# Сначала удалите старый конфиг
+sudo rm /etc/caddy/Caddyfile
+
+# Затем запустите скрипт с нужными параметрами
+sudo ./install_frp.sh -d example.site --setup-caddy --proxy-pass "new1.site:8080" --proxy-pass "new2.site:9090"
+Ручное добавление прокси без скрипта:
+bash
+sudo tee -a /etc/caddy/Caddyfile << EOF
+
+new-service.example.site {
+    reverse_proxy 192.168.1.100:5000
+}
+
+EOF
+sudo systemctl reload caddy
